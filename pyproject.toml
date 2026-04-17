@@ -1,0 +1,12 @@
+[project]
+name = "video-to-text"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "opencv-python>=4.13.0.92",
+    "rapidocr-onnxruntime>=1.4.4",
+    "wordninja>=2.0.0",
+    "yt-dlp>=2026.3.17",
+]
