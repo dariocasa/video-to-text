@@ -1,117 +1,238 @@
 # Video To Text
 
-Pipeline Python per:
+Pipeline Python per trasformare un video in dati strutturati.
 
-- scaricare video da YouTube
-- estrarre frame significativi dal video
-- eseguire OCR sui frame
-- ricostruire domande e risposte a partire dal testo OCR
-- generare output strutturati in JSON e Markdown
-- applicare un primo passaggio di cleanup sul testo estratto
+Il progetto scarica un video da YouTube, estrae i frame piu' rilevanti, esegue OCR, ricostruisce le domande in formato JSON, applica retry OCR sui casi difficili e supporta un cleanup finale via OpenAI.
 
-Il progetto e' pensato per contenuti video in cui le slide o le schermate mostrano:
+## Cosa Fa
 
-- numero domanda
-- testo della domanda
-- opzioni `A`, `B`, `C`, `D`
-- soluzione
-- spiegazione
+- scarica video da YouTube in `video/`
+- estrae frame con timestamp in `frames/<video_name>/`
+- esegue OCR frame-by-frame in `text/<video_name>/`
+- ricostruisce coppie domanda/risposta in `output/<video_name>/<video_name>.json`
+- applica un cleanup euristico in `output/<video_name>/<video_name>.cleaned.json`
+- applica un cleanup LLM opzionale in `output/<video_name>/<video_name>.llm.json`
 
-Un caso d'uso tipico e' l'analisi di video di quiz o exam dumps, dove ogni domanda appare in un frame e la soluzione nel frame successivo.
+Il caso d'uso principale e' l'estrazione di domande multiple choice da video dove:
 
-## Obiettivo
-
-L'obiettivo non e' solo estrarre testo grezzo dal video, ma arrivare a un formato leggibile e strutturato che possa essere ulteriormente ripulito, revisionato o passato a un LLM.
-
-La pipeline attuale produce diversi livelli di output:
-
-1. `frames/`: immagini estratte dal video
-2. `text/`: OCR grezzo, un file `.txt` per frame
-3. `output/<video>/...json`: dati strutturati domanda/risposta
-4. `output/<video>/...md`: documento leggibile in Markdown
-5. `output/<video>/...cleaned.*`: variante con cleanup euristico del testo
+- un frame mostra la domanda con le opzioni
+- il frame successivo mostra risposta e spiegazione
 
 ## Struttura Del Progetto
 
 ```text
 video_to_text/
-├── app/
-│   ├── document_builder.py
-│   ├── downloader.py
-│   ├── frame_extractor.py
-│   ├── models.py
-│   ├── ocr_retry.py
-│   ├── path_utils.py
-│   ├── text_cleaner.py
-│   └── text_extractor.py
-├── video/
-├── frames/
-├── text/
-├── output/
-├── main.py
-├── extract_text.py
-├── build_document.py
-├── clean_document.py
-├── pyproject.toml
-├── uv.lock
-└── README.md
+|-- app/
+|   |-- common/
+|   |   `-- path_utils.py
+|   |-- config/
+|   |   |-- models.py
+|   |   `-- settings.py
+|   |-- document/
+|   |   |-- builder.py
+|   |   `-- cleaner.py
+|   |-- download/
+|   |   `-- downloader.py
+|   |-- frames/
+|   |   `-- extractor.py
+|   |-- llm/
+|   |   `-- json_cleaner.py
+|   `-- ocr/
+|       |-- extractor.py
+|       `-- retry.py
+|-- video/
+|-- frames/
+|-- text/
+|-- output/
+|-- .env
+|-- main.py
+|-- extract_text.py
+|-- build_document.py
+|-- clean_document.py
+|-- llm_clean_json.py
+|-- pyproject.toml
+|-- uv.lock
+`-- README.md
 ```
 
-## Componenti Principali
+## Organizzazione Dei Moduli
 
-### `main.py`
+### `app/config`
 
-Entry point interattivo del progetto.
+Configurazione e modelli condivisi.
 
-Funzioni:
+- `models.py`: dataclass di configurazione per download, frame extraction, OCR e parsing
+- `settings.py`: lettura di `.env` tramite `python-dotenv`
 
-- chiede in input un link YouTube
-- scarica il video nella cartella `video/`
-- estrae i frame e li salva in `frames/<nome_video>/`
+### `app/download`
 
-### `app/downloader.py`
+Download del video con `yt-dlp`.
 
-Gestisce il download da YouTube tramite `yt-dlp`.
+### `app/frames`
 
-Caratteristiche:
-
-- salva il file video in `video/`
-- usa un template di nome basato su titolo e id YouTube
-- forza l'output in `mp4` quando possibile
-
-### `app/frame_extractor.py`
-
-Gestisce l'estrazione dei frame dal video con `OpenCV`.
+Estrazione frame con `OpenCV`.
 
 Caratteristiche:
 
-- legge FPS e metadati direttamente dal video
-- salva 1 frame ogni `N` secondi
-- evita frame duplicati
-- supporta un filtro opzionale basato sul cambiamento di scena
-- salva i frame con timestamp nel nome file
+- lettura dinamica degli FPS
+- campionamento ogni `N` secondi
+- filtro duplicati
+- filtro semplice di cambiamento scena
+- salvataggio con timestamp
 
-Esempio:
+### `app/ocr`
 
-```text
-frames/jan26_q1_35/frame_00-01-32.jpg
+OCR dei frame con `rapidocr-onnxruntime`.
+
+- `extractor.py`: OCR base con preprocess `gray2x` applicato a tutti i frame
+- `retry.py`: retry OCR con varianti immagine per recuperare campi mancanti
+
+### `app/document`
+
+Costruzione e cleanup del JSON.
+
+- `builder.py`: trasforma i `.txt` OCR in record strutturati
+- `cleaner.py`: applica cleanup euristico sul JSON risultante
+
+### `app/llm`
+
+Cleanup JSON tramite OpenAI API.
+
+- `json_cleaner.py`: pulizia record-by-record conservando lo schema
+
+### `app/common`
+
+Utility condivise per path e naming.
+
+## Setup
+
+### Requisiti
+
+- Python `>= 3.13`
+- `uv`
+
+Dipendenze principali:
+
+- `opencv-python`
+- `yt-dlp`
+- `rapidocr-onnxruntime`
+- `wordninja`
+- `openai`
+- `python-dotenv`
+
+### Creazione Ambiente
+
+```powershell
+uv venv .venv
+uv sync
 ```
 
-### `app/text_extractor.py`
+Oppure:
 
-Esegue OCR sui frame tramite `rapidocr-onnxruntime`.
+```powershell
+uv add openai opencv-python python-dotenv rapidocr-onnxruntime wordninja yt-dlp
+```
 
-Caratteristiche:
+### Attivazione
 
-- legge tutti i frame in `frames/<video_name>/`
-- salva un `.txt` per ogni frame in `text/<video_name>/`
-- mantiene il mapping 1:1 tra frame e file di testo
+```powershell
+.venv\Scripts\Activate.ps1
+```
 
-### `app/document_builder.py`
+In alternativa:
 
-Ricostruisce record strutturati a partire dai file OCR.
+```powershell
+.venv\Scripts\python.exe <script>.py
+```
 
-Ogni record contiene:
+## Configurazione `.env`
+
+Nel file `.env` puoi incollare la tua chiave OpenAI.
+
+Contenuto iniziale:
+
+```env
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4.1-mini
+OPENAI_TEMPERATURE=0
+OPENAI_MAX_OUTPUT_TOKENS=2000
+LLM_INPUT_SUFFIX=.json
+LLM_OUTPUT_SUFFIX=.llm.json
+LLM_FAIL_ON_MISSING_KEY=true
+```
+
+Campi principali:
+
+- `OPENAI_API_KEY`: chiave API OpenAI
+- `OPENAI_MODEL`: modello da usare per il cleanup JSON
+- `OPENAI_TEMPERATURE`: temperatura della generazione
+- `OPENAI_MAX_OUTPUT_TOKENS`: limite massimo di output per record
+- `LLM_INPUT_SUFFIX`: file JSON sorgente da leggere
+- `LLM_OUTPUT_SUFFIX`: nome del file JSON finale generato dall'LLM
+
+## Pipeline End-To-End
+
+### 1. Download Del Video E Estrazione Frame
+
+```powershell
+.venv\Scripts\python.exe main.py
+```
+
+`main.py`:
+
+1. chiede un link YouTube
+2. scarica il video in `video/`
+3. estrae i frame in `frames/<video_name>/`
+
+### 2. OCR Dei Frame
+
+```powershell
+.venv\Scripts\python.exe extract_text.py jan26_q1_35
+```
+
+L'estrazione OCR standard usa di default una variante preprocessata `gray2x` per tutti i frame.
+
+Output:
+
+- `text/jan26_q1_35/frame_00-00-00.txt`
+- `text/jan26_q1_35/frame_00-00-17.txt`
+- ecc.
+
+### 3. Costruzione JSON Strutturato
+
+```powershell
+.venv\Scripts\python.exe build_document.py jan26_q1_35
+```
+
+Output:
+
+- `output/jan26_q1_35/jan26_q1_35.json`
+
+### 4. Cleanup Euristico Del JSON
+
+```powershell
+.venv\Scripts\python.exe clean_document.py jan26_q1_35
+```
+
+Output:
+
+- `output/jan26_q1_35/jan26_q1_35.cleaned.json`
+
+### 5. Cleanup LLM Del JSON
+
+Prima incolla la chiave nel file `.env`, poi esegui:
+
+```powershell
+.venv\Scripts\python.exe llm_clean_json.py jan26_q1_35
+```
+
+Output:
+
+- `output/jan26_q1_35/jan26_q1_35.llm.json`
+
+## Formato Del JSON
+
+Ogni record contiene tipicamente:
 
 - `question_number`
 - `question`
@@ -124,161 +245,6 @@ Ogni record contiene:
 - `validation_warnings`
 - `retry_applied`
 - `retry_details`
-
-Il builder assume che i file OCR siano ordinati a coppie:
-
-- file 1: domanda + opzioni
-- file 2: answer + explanation
-
-### `app/ocr_retry.py`
-
-Gestisce i retry OCR per i casi problematici.
-
-Serve quando il parser trova problemi come:
-
-- opzioni mancanti
-- domanda incompleta
-- OCR troppo rumoroso su una porzione del frame
-
-Strategia:
-
-- rilegge il frame immagine originale
-- prova piu' varianti dell'immagine
-- sceglie il risultato OCR migliore
-
-Varianti usate:
-
-- frame completo
-- crop inferiore
-- grayscale 2x
-- threshold + resize
-- crop mirati per area domanda/opzioni
-
-### `app/text_cleaner.py`
-
-Applica un primo cleanup euristico sul JSON strutturato.
-
-Attenzione:
-
-- migliora leggermente la leggibilita'
-- non garantisce testo “editoriale”
-- non sostituisce un vero passaggio di normalizzazione con LLM
-
-## Requisiti
-
-- Python `>= 3.13`
-- `uv`
-
-Dipendenze principali:
-
-- `opencv-python`
-- `yt-dlp`
-- `rapidocr-onnxruntime`
-- `wordninja`
-
-## Setup
-
-### 1. Creazione Del Virtual Environment
-
-```powershell
-uv venv .venv
-```
-
-### 2. Installazione Dipendenze
-
-Se il progetto ha gia' `pyproject.toml` e `uv.lock`:
-
-```powershell
-uv sync
-```
-
-Oppure, se vuoi installare manualmente:
-
-```powershell
-uv add opencv-python yt-dlp rapidocr-onnxruntime wordninja
-```
-
-### 3. Attivazione Ambiente
-
-PowerShell:
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-In alternativa puoi sempre eseguire i comandi direttamente con:
-
-```powershell
-.venv\Scripts\python.exe <script>.py
-```
-
-## Flusso End-To-End
-
-### Step 1. Download Del Video E Estrazione Frame
-
-```powershell
-.venv\Scripts\python.exe main.py
-```
-
-Il programma:
-
-1. chiede il link YouTube
-2. scarica il video in `video/`
-3. estrae i frame in `frames/<nome_video>/`
-
-### Step 2. OCR Dei Frame
-
-```powershell
-.venv\Scripts\python.exe extract_text.py jan26_q1_35
-```
-
-Output:
-
-- `text/jan26_q1_35/frame_00-00-00.txt`
-- `text/jan26_q1_35/frame_00-00-17.txt`
-- ecc.
-
-### Step 3. Costruzione Documento Strutturato
-
-```powershell
-.venv\Scripts\python.exe build_document.py jan26_q1_35
-```
-
-Output:
-
-- `output/jan26_q1_35/jan26_q1_35.json`
-- `output/jan26_q1_35/jan26_q1_35.md`
-
-### Step 4. Cleanup Del Documento
-
-```powershell
-.venv\Scripts\python.exe clean_document.py jan26_q1_35
-```
-
-Output:
-
-- `output/jan26_q1_35/jan26_q1_35.cleaned.json`
-- `output/jan26_q1_35/jan26_q1_35.cleaned.md`
-
-## Formato Degli Output
-
-### OCR Grezzo
-
-Ogni frame genera un file `.txt`.
-
-Esempio:
-
-```text
-text/jan26_q1_35/frame_00-01-15.txt
-text/jan26_q1_35/frame_00-01-32.txt
-```
-
-Spesso i file sono in coppie:
-
-- primo file: domanda
-- secondo file: risposta + spiegazione
-
-### JSON Strutturato
 
 Esempio semplificato:
 
@@ -308,164 +274,83 @@ Esempio semplificato:
 }
 ```
 
-### Markdown
-
-Il Markdown e' utile per:
-
-- lettura veloce
-- review manuale
-- esportazione futura in DOCX o PDF
-
 ## Retry OCR
 
-Uno dei problemi classici dell'OCR su video e' che alcune opzioni non vengano lette correttamente.
+Il builder applica un retry OCR automatico quando trova record incompleti.
 
-Esempio reale:
+Problemi intercettati:
 
-- la domanda 10 del dataset `jan26_q1_35` inizialmente non conteneva l'opzione `B`
-- il retry OCR ha recuperato l'opzione rielaborando il frame con una variante `gray2x`
+- opzioni mancanti
+- domanda incompleta
+- answer o explanation assenti
 
-Questo comportamento e' visibile direttamente nei campi:
+Strategia:
 
-- `retry_applied`
-- `retry_details`
-- `validation_warnings`
+1. recupera il frame originale
+2. prova varianti immagine diverse
+3. riesegue OCR
+4. sceglie la variante migliore
 
-## Configurazione
+Esempi di varianti:
 
-I parametri principali sono definiti in [app/models.py](./app/models.py).
+- frame intero
+- crop inferiore
+- grayscale 2x
+- threshold + resize
+- crop mirati per domanda o opzioni
 
-Valori importanti:
+## Differenza Tra I JSON Generati
 
-- cartella video: `video/`
-- cartella frame: `frames/`
-- cartella testo OCR: `text/`
-- cartella output finale: `output/`
-- intervallo estrazione frame: default `1.0` secondo
-- soglia duplicati frame
-- soglia scene change
-- soglia minima confidenza OCR
+### `*.json`
 
-## Convenzioni Di Naming
+Output strutturato base del parser.
 
-### Video
+### `*.cleaned.json`
 
-I video vengono salvati in `video/`.
+Output con cleanup euristico.
 
-Esempi:
+Vantaggi:
 
-- `video/jan26_q1_35.mp4`
-- `video/jan26_q36_70.mp4`
+- nessun costo API
+- immediato
+- utile come pre-cleanup
 
-### Frame
+Limiti:
 
-Ogni frame contiene il timestamp:
+- non sempre migliora davvero il testo
+- puo' lasciare ancora parole fuse o rumorose
 
-```text
-frame_00-01-32.jpg
-```
+### `*.llm.json`
 
-### Cartelle Per Video
+Output con cleanup LLM record-by-record.
 
-I dati derivati vengono separati per video:
+Vantaggi:
 
-- `frames/<video_name>/`
-- `text/<video_name>/`
-- `output/<video_name>/`
+- molto piu' adatto a ottenere testo leggibile
+- mantiene lo schema JSON
+- puo' aggiungere note di ambiguita'
 
-Questo evita collisioni tra run diversi e semplifica la gestione di piu' video nello stesso progetto.
+Limiti:
 
-## Limitazioni Attuali
+- richiede una chiave OpenAI
+- ha costo e latenza
+- va comunque revisionato nei casi ambigui
 
-Il progetto funziona bene come pipeline tecnica, ma ci sono ancora limiti importanti.
+## Quando Usare Il Cleanup LLM
 
-### 1. Il Cleanup Euristico Non Basta
+Il punto corretto per usare un LLM e' dopo:
 
-La fase `clean_document.py` migliora solo in parte il testo.
+1. OCR
+2. parsing strutturato
+3. eventuale retry OCR
 
-Problemi ancora presenti:
-
-- parole attaccate
-- token tecnici spezzati o deformati
-- punteggiatura rumorosa
-- frasi non sempre grammaticalmente corrette
-
-### 2. Il Parser Assume Una Sequenza Regolare
-
-Il builder assume che i file siano in coppie domanda/risposta.
-
-Se il video cambia struttura, il parser potrebbe richiedere adattamenti.
-
-### 3. OCR Sensibile Alla Qualita' Del Frame
-
-Risultati peggiori quando:
-
-- il testo e' piccolo
-- c'e' blur o compressione
-- il contrasto e' basso
-- la slide contiene elementi molto densi
-
-### 4. Nessun LLM Integrato
-
-Il progetto oggi non usa ancora un LLM per:
-
-- normalizzare il testo
-- correggere frasi spezzate
-- riscrivere il contenuto in forma leggibile
-- segnalare ambiguita' residue
-
-## Direzione Consigliata Per I Prossimi Passi
-
-Per ottenere documenti davvero leggibili, il flusso consigliato e':
-
-1. `video -> frames`
-2. `frames -> OCR`
-3. `OCR -> JSON strutturato`
-4. `retry OCR sui casi problematici`
-5. `LLM cleanup record-by-record`
-6. `export finale in Markdown / DOCX / CSV`
-
-Il punto corretto in cui inserire un LLM e' dopo il parser strutturato, non prima.
+Non prima.
 
 Motivo:
 
-- prima serve estrarre struttura affidabile
-- poi il modello puo' ripulire il testo senza “inventare” il formato
-
-## Esempio Di Pipeline Consigliata Con LLM
-
-Per ogni record JSON:
-
-Input:
-
-- domanda OCR
-- opzioni OCR
-- soluzione OCR
-- spiegazione OCR
-- warning di validazione
-- informazioni sul retry
-
-Output desiderato:
-
-- stesso schema JSON
-- testo reso leggibile
-- nessuna invenzione di contenuto
-- eventuale flag `uncertain` se un campo resta ambiguo
-
-## Git Ignore
-
-Il progetto ignora gia' i dati pesanti e generati:
-
-- `.venv`
-- `video/*`
-- `frames/*`
-- `text/*`
-
-Valuta se ignorare anche:
-
-- `output/*`
-
-se non vuoi versionare i documenti generati.
+- prima vuoi estrarre struttura affidabile
+- poi vuoi migliorare la leggibilita'
+- cosi' il modello pulisce il testo senza dover ricostruire tutto da zero
 
 ## Comandi Rapidi
 
@@ -481,16 +366,22 @@ OCR:
 .venv\Scripts\python.exe extract_text.py <video_name>
 ```
 
-Build JSON/Markdown:
+JSON strutturato:
 
 ```powershell
 .venv\Scripts\python.exe build_document.py <video_name>
 ```
 
-Build versione cleaned:
+JSON cleaned:
 
 ```powershell
 .venv\Scripts\python.exe clean_document.py <video_name>
+```
+
+JSON cleaned via LLM:
+
+```powershell
+.venv\Scripts\python.exe llm_clean_json.py <video_name>
 ```
 
 Esempio completo:
@@ -499,18 +390,26 @@ Esempio completo:
 .venv\Scripts\python.exe extract_text.py jan26_q1_35
 .venv\Scripts\python.exe build_document.py jan26_q1_35
 .venv\Scripts\python.exe clean_document.py jan26_q1_35
+.venv\Scripts\python.exe llm_clean_json.py jan26_q1_35
 ```
+
+## Limitazioni Attuali
+
+- il parser assume una sequenza abbastanza regolare domanda/risposta
+- l'OCR dipende molto dalla qualita' del frame
+- il cleanup euristico non e' sufficiente per tutti i casi
+- il cleanup LLM va considerato assistito, non infallibile
 
 ## Stato Attuale
 
 Ad oggi il progetto:
 
-- scarica video YouTube
-- estrae frame con naming temporale
-- salva i frame in cartelle per video
-- esegue OCR frame-by-frame
-- costruisce JSON e Markdown strutturati
-- applica retry OCR su casi incompleti
-- genera una versione cleaned del documento
+- e' organizzato per step
+- ha configurazione centralizzata in `app/config/settings.py`
+- usa `.env` per la parte OpenAI
+- produce JSON strutturati, cleaned e LLM-cleaned
+- mantiene separati i dati per video in `frames/`, `text/` e `output/`
 
-La base tecnica e' buona. Il passo successivo piu' utile e' integrare un modulo LLM per portare il testo da “OCR strutturato” a “documento leggibile e quasi finale”.
+Il flusso piu' consigliato per ottenere un risultato finale leggibile e':
+
+`video -> frames -> OCR -> JSON -> retry OCR -> LLM cleanup -> JSON finale`

@@ -20,13 +20,7 @@ def build_image_variants(image) -> dict[str, object]:
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     scaled_gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
     _, threshold = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    scaled_threshold = cv2.resize(
-        threshold,
-        None,
-        fx=2,
-        fy=2,
-        interpolation=cv2.INTER_CUBIC,
-    )
+    scaled_threshold = cv2.resize(threshold, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
 
     return {
         "full": image,
@@ -34,34 +28,10 @@ def build_image_variants(image) -> dict[str, object]:
         "bottom55": image[int(height * 0.40) :, :],
         "gray2x": scaled_gray,
         "threshold2x": scaled_threshold,
-        "top80_gray2x": cv2.resize(
-            gray[: int(height * 0.80), :],
-            None,
-            fx=2,
-            fy=2,
-            interpolation=cv2.INTER_CUBIC,
-        ),
-        "options_only_gray2x": cv2.resize(
-            gray[int(height * 0.40) :, :],
-            None,
-            fx=2,
-            fy=2,
-            interpolation=cv2.INTER_CUBIC,
-        ),
-        "options_only_threshold2x": cv2.resize(
-            threshold[int(height * 0.40) :, :],
-            None,
-            fx=2,
-            fy=2,
-            interpolation=cv2.INTER_CUBIC,
-        ),
-        "question_only_gray2x": cv2.resize(
-            gray[: int(height * 0.55), :],
-            None,
-            fx=2,
-            fy=2,
-            interpolation=cv2.INTER_CUBIC,
-        ),
+        "top80_gray2x": cv2.resize(gray[: int(height * 0.80), :], None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC),
+        "options_only_gray2x": cv2.resize(gray[int(height * 0.40) :, :], None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC),
+        "options_only_threshold2x": cv2.resize(threshold[int(height * 0.40) :, :], None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC),
+        "question_only_gray2x": cv2.resize(gray[: int(height * 0.55), :], None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC),
         "center_gray2x": cv2.resize(
             gray[int(height * 0.12) : int(height * 0.90), int(width * 0.03) : int(width * 0.97)],
             None,
@@ -95,12 +65,6 @@ def build_retry_candidates(frame_path: Path, min_confidence: float) -> list[dict
 
     for variant_name, variant_image in build_image_variants(image).items():
         lines = run_ocr_lines(ocr_engine, variant_image, min_confidence)
-        candidates.append(
-            {
-                "variant": variant_name,
-                "lines": lines,
-                "text": "\n".join(lines).strip(),
-            }
-        )
+        candidates.append({"variant": variant_name, "lines": lines, "text": "\n".join(lines).strip()})
 
     return candidates

@@ -5,8 +5,12 @@ from pathlib import Path
 
 import cv2
 
-from app.models import ExtractionConfig
-from app.path_utils import build_video_output_dir
+from app.common.path_utils import build_video_output_dir, sanitize_name
+from app.config.models import (
+    SUPPORTED_VIDEO_EXTENSIONS,
+    VIDEO_DIR,
+    ExtractionConfig,
+)
 
 
 def open_video_capture(video_path: Path) -> cv2.VideoCapture:
@@ -22,12 +26,10 @@ def get_video_metadata(capture: cv2.VideoCapture) -> tuple[float, int]:
     """Extract FPS and total frame count from the video metadata."""
     fps = float(capture.get(cv2.CAP_PROP_FPS))
     frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
-
     if fps <= 0:
         raise RuntimeError("FPS non validi letti dai metadati del video.")
     if frame_count <= 0:
         raise RuntimeError("Numero di frame non valido letto dai metadati del video.")
-
     return fps, frame_count
 
 
@@ -59,11 +61,7 @@ def mean_frame_difference(current_signature, previous_signature) -> float:
     return float(difference.mean())
 
 
-def should_keep_frame(
-    current_signature,
-    last_saved_signature,
-    config: ExtractionConfig,
-) -> tuple[bool, str]:
+def should_keep_frame(current_signature, last_saved_signature, config: ExtractionConfig) -> tuple[bool, str]:
     """Decide whether the current frame should be saved."""
     if last_saved_signature is None:
         return True, "first frame"
@@ -79,11 +77,7 @@ def should_keep_frame(
 def save_frame(frame, output_dir: Path, timestamp_seconds: float, image_quality: int) -> Path:
     """Persist a frame to disk using a timestamp-based filename."""
     output_path = output_dir / build_frame_filename(timestamp_seconds)
-    success = cv2.imwrite(
-        str(output_path),
-        frame,
-        [cv2.IMWRITE_JPEG_QUALITY, image_quality],
-    )
+    success = cv2.imwrite(str(output_path), frame, [cv2.IMWRITE_JPEG_QUALITY, image_quality])
     if not success:
         raise RuntimeError(f"Impossibile salvare il frame: {output_path}")
     return output_path
@@ -103,12 +97,7 @@ def extract_frames(video_path: Path, config: ExtractionConfig) -> int:
     try:
         fps, frame_count = get_video_metadata(capture)
         duration_seconds = frame_count / fps
-        logging.info(
-            "Metadati video: fps=%.3f, total_frames=%d, duration=%.2fs",
-            fps,
-            frame_count,
-            duration_seconds,
-        )
+        logging.info("Metadati video: fps=%.3f, total_frames=%d, duration=%.2fs", fps, frame_count, duration_seconds)
 
         next_timestamp = 0.0
         while next_timestamp <= duration_seconds + 1e-9:
@@ -123,36 +112,54 @@ def extract_frames(video_path: Path, config: ExtractionConfig) -> int:
                 )
 
             frame_signature = compute_frame_signature(frame)
-            keep_frame, reason = should_keep_frame(
-                frame_signature,
-                last_saved_signature,
-                config,
-            )
+            keep_frame, reason = should_keep_frame(frame_signature, last_saved_signature, config)
 
             processed_targets += 1
             if keep_frame:
                 save_frame(frame, output_dir, next_timestamp, config.image_quality)
                 saved_count += 1
                 last_saved_signature = frame_signature
-                logging.info(
-                    "Estratti %d frame: %s",
-                    saved_count,
-                    build_frame_filename(next_timestamp),
-                )
-            else:
-                logging.info(
-                    "Saltato timestamp %s (%s).",
-                    format_timestamp(next_timestamp),
-                    reason,
-                )
+                logging.info("Estratti %d frame: %s", saved_count, build_frame_filename(next_timestamp))
+            # else:
+            #     logging.info("Saltato timestamp %s (%s).", format_timestamp(next_timestamp), reason)
 
             next_timestamp += config.seconds_interval
 
-        logging.info(
-            "Completato. Campioni processati: %d, frame salvati: %d.",
-            processed_targets,
-            saved_count,
-        )
+        logging.info("Completato. Campioni processati: %d, frame salvati: %d.", processed_targets, saved_count)
         return saved_count
     finally:
         capture.release()
+
+
+def process_all_videos(config: ExtractionConfig | None = None) -> None:
+    """Process all video files in the video directory into frames."""
+    config = config or ExtractionConfig()
+    
+    if not VIDEO_DIR.exists():
+        logging.warning(f"La cartella video '{VIDEO_DIR}' non esiste.")
+        return
+
+    # Filter files by supported extensions
+    video_files = [
+        f for f in VIDEO_DIR.iterdir() 
+        if f.is_file() and f.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS
+    ]
+
+    if not video_files:
+        logging.info("Nessun video trovato da processare.")
+        return
+
+    logging.info(f"Trovati {len(video_files)} video da processare.")
+
+    for video_path in video_files:
+        output_dir = config.output_root / sanitize_name(video_path.stem)
+        
+        # Check if the video has already been processed (folder exists and is not empty)
+        if output_dir.exists() and any(output_dir.iterdir()):
+            logging.info(f"Salto '{video_path.name}': output gia' presente in {output_dir}")
+            continue
+
+        try:
+            extract_frames(video_path, config)
+        except Exception as e:
+            logging.error(f"Errore durante l'elaborazione di '{video_path.name}': {e}")

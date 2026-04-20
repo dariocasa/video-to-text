@@ -5,8 +5,9 @@ from pathlib import Path
 
 from rapidocr_onnxruntime import RapidOCR
 
-from app.models import OcrConfig
-from app.path_utils import build_named_output_dir
+from app.common.path_utils import build_named_output_dir, sanitize_name
+from app.config.models import FRAMES_DIR, OcrConfig
+from app.ocr.retry import build_image_variants, load_frame_image
 
 
 SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -30,8 +31,10 @@ def list_frame_files(frame_dir: Path) -> list[Path]:
 
 
 def extract_text_lines(ocr_engine: RapidOCR, frame_path: Path, min_confidence: float) -> list[str]:
-    """Extract ordered text lines from a frame image."""
-    result, _ = ocr_engine(str(frame_path))
+    """Extract ordered text lines from a frame image using the default OCR preprocessing."""
+    image = load_frame_image(frame_path)
+    preprocessed_image = build_image_variants(image)["gray2x"]
+    result, _ = ocr_engine(preprocessed_image)
     if not result:
         return []
 
@@ -44,11 +47,18 @@ def extract_text_lines(ocr_engine: RapidOCR, frame_path: Path, min_confidence: f
     return lines
 
 
+def clean_ocr_lines(lines: list[str]) -> list[str]:
+    """Remove boilerplate '15' from the last line if it exists."""
+    if lines and lines[-1] == "15":
+        logging.info("Rimossa riga '15' finale.")
+        return lines[:-1]
+    return lines
+
+
 def save_text_file(output_dir: Path, frame_path: Path, lines: list[str]) -> Path:
     """Save extracted text for a frame in a matching .txt file."""
     output_path = output_dir / f"{frame_path.stem}.txt"
-    content = "\n".join(lines)
-    output_path.write_text(content, encoding="utf-8")
+    output_path.write_text("\n".join(lines), encoding="utf-8")
     return output_path
 
 
@@ -65,14 +75,45 @@ def extract_text_from_video_frames(video_name: str, config: OcrConfig) -> int:
 
     for index, frame_path in enumerate(frame_files, start=1):
         lines = extract_text_lines(ocr_engine, frame_path, config.min_confidence)
-        save_text_file(output_dir, frame_path, lines)
+        cleaned_lines = clean_ocr_lines(lines)
+        save_text_file(output_dir, frame_path, cleaned_lines)
         saved_count += 1
-        logging.info(
-            "Testo estratto %d/%d: %s",
-            index,
-            len(frame_files),
-            frame_path.name,
-        )
+        logging.info("Testo estratto %d/%d: %s", index, len(frame_files), frame_path.name)
 
     logging.info("Completato. File di testo salvati: %d.", saved_count)
     return saved_count
+
+
+def process_all_ocr_extractions(config: OcrConfig | None = None) -> None:
+    """Extract text from all frame folders in the frames directory."""
+    config = config or OcrConfig()
+
+    if not config.frames_root.exists():
+        logging.warning(f"La cartella frames '{config.frames_root}' non esiste.")
+        return
+
+    # Filter for directories in frames root
+    video_folders = [
+        d for d in config.frames_root.iterdir()
+        if d.is_dir()
+    ]
+
+    if not video_folders:
+        logging.info("Nessuna cartella di frame trovata.")
+        return
+
+    logging.info(f"Trovate {len(video_folders)} cartelle di frame da processare.")
+
+    for folder in video_folders:
+        video_name = folder.name
+        output_dir = config.output_root / sanitize_name(video_name)
+
+        # Skip if folder exists and contains files
+        if output_dir.exists() and any(output_dir.iterdir()):
+            logging.info(f"Salto '{video_name}': testo gia' estratto in {output_dir}")
+            continue
+
+        try:
+            extract_text_from_video_frames(video_name, config)
+        except Exception as e:
+            logging.error(f"Errore durante l'OCR di '{video_name}': {e}")

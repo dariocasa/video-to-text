@@ -5,14 +5,14 @@ from pathlib import Path
 
 from yt_dlp import YoutubeDL
 
-from app.models import DownloadConfig
-from app.path_utils import ensure_directory
+from app.common.path_utils import ensure_directory
+from app.config.models import DownloadConfig
 
 
-def download_youtube_video(url: str, config: DownloadConfig) -> Path:
+def download_youtube_video(url: str, config: DownloadConfig, output_name: str | None = None) -> Path:
     """Download a YouTube video into the configured video directory."""
     output_dir = ensure_directory(config.output_dir)
-    output_template = str(output_dir / "%(title)s [%(id)s].%(ext)s")
+    output_template = str(output_dir / f"{output_name}.%(ext)s") if output_name else str(output_dir / "%(title)s [%(id)s].%(ext)s")
 
     options = {
         "format": "mp4/bestvideo+bestaudio/best",

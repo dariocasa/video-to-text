@@ -4,8 +4,8 @@ import argparse
 import logging
 import sys
 
-from app.models import OcrConfig
-from app.text_extractor import extract_text_from_video_frames
+from app.config.models import OcrConfig
+from app.ocr.extractor import extract_text_from_video_frames
 
 
 def configure_logging() -> None:

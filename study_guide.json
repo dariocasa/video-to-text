@@ -1,0 +1,100 @@
+{
+    "certification": "Google Cloud Professional Machine Learning Engineer",
+    "version": "Study Guide v2.0",
+    "topics": [
+        {
+            "topic": "Section 1: Architecting low-code ML solutions",
+            "sottotopics": [
+                {
+                    "sottotopico": "1.1 Developing ML models by using BigQuery ML",
+                    "spiegazione": "Identificare il modello BigQuery ML più adatto (classificazione lineare/binaria, regressione, time-series, matrix factorization, boosted trees, autoencoders), eseguire feature engineering all'interno di BigQuery ML, valutare le prestazioni con metriche come R-squared, precision, recall, F1-score e generare previsioni batch e online."
+                },
+                {
+                    "sottotopico": "1.2 Building AI solutions by using ML APIs or foundational models",
+                    "spiegazione": "Utilizzare ML APIs pre-addestrate (Vision API, Natural Language API, Speech-to-Text, Translation), API specifiche di settore (Document AI, Retail API) e implementare applicazioni Retrieval Augmented Generation (RAG) con Vertex AI Agent Builder, anche con strumenti low-code/no-code."
+                },
+                {
+                    "sottotopico": "1.3 Training models by using AutoML",
+                    "spiegazione": "Preparare dati (tabulari, testo, immagini, video) per AutoML in Vertex AI, gestire dataset, preprocessing con Dataflow e BigQuery, feature selection, data labeling, creazione di modelli di forecasting e configurare/debuggare modelli AutoML, con attenzione alla privacy."
+                }
+            ]
+        },
+        {
+            "topic": "Section 2: Collaborating within and across teams to manage data and models",
+            "sottotopics": [
+                {
+                    "sottotopico": "2.1 Exploring and preprocessing organization-wide data",
+                    "spiegazione": "Scegliere i servizi di storage adeguati (Cloud Storage, BigQuery, Spanner, Cloud SQL), preprocessare dati con Dataflow, TFX e BigQuery, creare e consolidare feature con Vertex AI Feature Store, gestire dati sensibili (PII, PHI) e garantire privacy."
+                },
+                {
+                    "sottotopico": "2.2 Model prototyping using Jupyter notebooks",
+                    "spiegazione": "Scegliere il backend Jupyter (Vertex AI Workbench, Dataproc), applicare best practice di sicurezza in Workbench e Colab Enterprise, utilizzare Spark kernels, integrare con repository Git e sviluppare modelli con TensorFlow, PyTorch, Scikit-learn, Spark, JAX e modelli da Model Garden."
+                },
+                {
+                    "sottotopico": "2.3 Tracking and running ML experiments",
+                    "spiegazione": "Scegliere l'ambiente corretto per esperimenti (Vertex AI Experiments, Kubeflow Pipelines, Vertex AI TensorBoard), valutare soluzioni generative AI (accuratezza, creatività, bias, etica) e integrare TensorBoard con TensorFlow e PyTorch per visualizzare e ottimizzare le prestazioni."
+                }
+            ]
+        },
+        {
+            "topic": "Section 3: Scaling prototypes into ML models",
+            "sottotopics": [
+                {
+                    "sottotopico": "3.1 Building models",
+                    "spiegazione": "Scegliere il framework ML e l'architettura del modello più appropriata, considerando i requisiti di interpretability e i trade-off tra complessità e explainability."
+                },
+                {
+                    "sottotopico": "3.2 Training models",
+                    "spiegazione": "Organizzare e ingerire dati di training, utilizzare SDK (Vertex AI custom training, Kubeflow), distributed training, hyperparameter tuning, troubleshooting di fallimenti di training e fine-tuning di foundational models da Model Garden."
+                },
+                {
+                    "sottotopico": "3.3 Choosing appropriate hardware for training",
+                    "spiegazione": "Valutare opzioni di compute e accelerator (CPU, GPU, TPU, edge devices), eseguire distributed training con TPUs e GPUs (Reduction Server, Horovod) e confrontare GPU vs TPU in base a modello, prestazioni e costi."
+                }
+            ]
+        },
+        {
+            "topic": "Section 4: Serving and scaling models",
+            "sottotopics": [
+                {
+                    "sottotopico": "4.1 Serving models",
+                    "spiegazione": "Scegliere tra batch e online inference (Vertex AI, Dataflow, BigQuery ML, Dataproc), servire modelli con diversi framework (PyTorch, XGBoost), organizzare un model registry e effettuare A/B testing."
+                },
+                {
+                    "sottotopico": "4.2 Scaling online model serving",
+                    "spiegazione": "Utilizzare Vertex AI Feature Store, public/private endpoints, scegliere hardware adeguato (CPU/GPU/TPU), scalare il serving backend (Vertex AI Prediction, containerized serving) e ottimizzare modelli per latenza, memoria e throughput."
+                }
+            ]
+        },
+        {
+            "topic": "Section 5: Automating and orchestrating ML pipelines",
+            "sottotopics": [
+                {
+                    "sottotopico": "5.1 Developing end-to-end ML pipelines",
+                    "spiegazione": "Implementare data e model validation, mantenere preprocessing coerente tra training e serving, orchestrare pipeline con Kubeflow, Vertex AI Pipelines o Cloud Composer, gestire strategie hybrid/multi-cloud e progettare con TFX o Kubeflow DSL."
+                },
+                {
+                    "sottotopico": "5.2 Automating model retraining",
+                    "spiegazione": "Definire una policy di retraining appropriata, implementare CI/CD per il deployment automatico di modelli (Cloud Build, Jenkins) per mantenere le prestazioni nel tempo."
+                },
+                {
+                    "sottotopico": "5.3 Tracking and auditing metadata",
+                    "spiegazione": "Tracciare e confrontare artifact e versioni dei modelli (Vertex AI Experiments, Vertex ML Metadata), gestire versioning di modelli e dataset, e implementare model/data lineage per tracciabilità e riproducibilità."
+                }
+            ]
+        },
+        {
+            "topic": "Section 6: Monitoring ML solutions",
+            "sottotopics": [
+                {
+                    "sottotopico": "6.1 Identifying risks to ML solutions",
+                    "spiegazione": "Costruire sistemi ML sicuri, allinearsi alle pratiche Responsible AI di Google (fairness, bias, privacy, transparency), valutare la readiness della soluzione e utilizzare Vertex AI Explainable AI per interpretability e rilevamento di bias."
+                },
+                {
+                    "sottotopico": "6.2 Monitoring, testing, and troubleshooting ML solutions",
+                    "spiegazione": "Impostare continuous evaluation con Vertex AI Model Monitoring e Explainable AI, monitorare training-serving skew e feature attribution drift, confrontare prestazioni con baseline, e troubleshootare errori comuni di training e serving."
+                }
+            ]
+        }
+    ]
+}

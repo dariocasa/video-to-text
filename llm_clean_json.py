@@ -5,7 +5,7 @@ import logging
 import sys
 
 from app.config.models import ParseConfig
-from app.document.builder import build_json_document
+from app.llm.json_cleaner import clean_json_with_llm
 
 
 def configure_logging() -> None:
@@ -16,27 +16,25 @@ def configure_logging() -> None:
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(
-        description="Build a structured JSON document from OCR text pairs."
+        description="Create an LLM-cleaned JSON document from parsed OCR output."
     )
     parser.add_argument(
         "video_name",
-        help="Video folder name inside text/ (for example: jan26_q1_35).",
+        help="Video folder name inside output/ (for example: jan26_q1_35).",
     )
     return parser.parse_args()
 
 
 def main() -> int:
-    """CLI entrypoint for OCR JSON document building."""
+    """CLI entrypoint for LLM JSON cleanup."""
     configure_logging()
-
     try:
         args = parse_args()
-        json_path = build_json_document(args.video_name, ParseConfig())
-        logging.info(f"JSON creato: {json_path}")
+        output_path = clean_json_with_llm(args.video_name, ParseConfig())
+        logging.info(f"JSON LLM creato: {output_path}")
     except Exception as error:
         logging.error(f"Errore: {error}")
         return 1
-
     return 0
 
 

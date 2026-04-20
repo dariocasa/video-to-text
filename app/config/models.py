@@ -8,11 +8,14 @@ VIDEO_DIR = Path("video")
 FRAMES_DIR = Path("frames")
 TEXT_DIR = Path("text")
 OUTPUT_DIR = Path("output")
+
 DEFAULT_SECONDS_INTERVAL = 1.0
 DEFAULT_DUPLICATE_THRESHOLD = 1.0
 DEFAULT_SCENE_THRESHOLD = 20.0
 DEFAULT_IMAGE_QUALITY = 95
 DEFAULT_OCR_MIN_CONFIDENCE = 0.5
+
+SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
 
 
 @dataclass(frozen=True)

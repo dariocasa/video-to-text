@@ -4,8 +4,8 @@ import argparse
 import logging
 import sys
 
-from app.models import ParseConfig
-from app.text_cleaner import build_clean_documents
+from app.config.models import ParseConfig
+from app.document.cleaner import build_clean_json
 
 
 def configure_logging() -> None:
@@ -16,7 +16,7 @@ def configure_logging() -> None:
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(
-        description="Create cleaned JSON and Markdown documents from parsed OCR output."
+        description="Create a cleaned JSON document from parsed OCR output."
     )
     parser.add_argument(
         "video_name",
@@ -26,13 +26,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    """CLI entrypoint for cleaned document generation."""
+    """CLI entrypoint for cleaned JSON generation."""
     configure_logging()
     try:
         args = parse_args()
-        json_path, markdown_path = build_clean_documents(args.video_name, ParseConfig())
+        json_path = build_clean_json(args.video_name, ParseConfig())
         logging.info(f"JSON clean creato: {json_path}")
-        logging.info(f"Markdown clean creato: {markdown_path}")
     except Exception as error:
         logging.error(f"Errore: {error}")
         return 1
