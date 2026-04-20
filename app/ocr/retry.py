@@ -41,30 +41,3 @@ def build_image_variants(image) -> dict[str, object]:
         ),
     }
 
-
-def run_ocr_lines(ocr_engine: RapidOCR, image, min_confidence: float) -> list[str]:
-    """Extract filtered OCR lines from an image variant."""
-    result, _ = ocr_engine(image)
-    if not result:
-        return []
-
-    lines: list[str] = []
-    for item in result:
-        text = str(item[1]).strip()
-        score = float(item[2])
-        if text and score >= min_confidence:
-            lines.append(text)
-    return lines
-
-
-def build_retry_candidates(frame_path: Path, min_confidence: float) -> list[dict[str, object]]:
-    """Run OCR over multiple image variants and collect candidate texts."""
-    image = load_frame_image(frame_path)
-    ocr_engine = RapidOCR()
-    candidates: list[dict[str, object]] = []
-
-    for variant_name, variant_image in build_image_variants(image).items():
-        lines = run_ocr_lines(ocr_engine, variant_image, min_confidence)
-        candidates.append({"variant": variant_name, "lines": lines, "text": "\n".join(lines).strip()})
-
-    return candidates

@@ -44,5 +44,3 @@ class ParseConfig:
     text_root: Path = TEXT_DIR
     output_root: Path = OUTPUT_DIR
     frames_root: Path = FRAMES_DIR
-    retry_ocr: bool = True
-    ocr_min_confidence: float = DEFAULT_OCR_MIN_CONFIDENCE

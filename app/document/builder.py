@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 
 from app.common.path_utils import build_named_output_dir, sanitize_name
 from app.config.models import ParseConfig
-from app.ocr.retry import build_retry_candidates
 
 
 QUESTION_NUMBER_PATTERN = re.compile(r"^\s*(\d+)\.")
@@ -97,101 +97,19 @@ def parse_answer_file(answer_file: Path) -> dict[str, str]:
     return parse_answer_text(answer_file.read_text(encoding="utf-8"), answer_file.name)
 
 
-def validate_record(record: dict[str, object]) -> list[str]:
-    warnings: list[str] = []
-    options = record.get("options", {})
-    missing_options = [letter for letter in ("A", "B", "C", "D") if not str(options.get(letter, "")).strip()]
-    if missing_options:
-        warnings.append(f"missing_options:{','.join(missing_options)}")
-    if not str(record.get("question", "")).strip():
-        warnings.append("missing_question_text")
-    if not str(record.get("solution", "")).strip():
-        warnings.append("missing_solution_letter")
-    if not str(record.get("solution_text", "")).strip():
-        warnings.append("missing_solution_text")
-    if not str(record.get("explanation", "")).strip():
-        warnings.append("missing_explanation")
-    return warnings
 
 
-def score_question_record(record: dict[str, object]) -> tuple[int, int]:
-    return (count_filled_options(record["options"]), len(str(record["question"])))
-
-
-def score_answer_record(record: dict[str, str]) -> tuple[int, int]:
-    return (1 if record.get("solution") else 0, len(record.get("solution_text", "")) + len(record.get("explanation", "")))
-
-
-def build_frame_path(video_name: str, text_file: Path, config: ParseConfig) -> Path:
-    return config.frames_root / video_name / f"{text_file.stem}.jpg"
-
-
-def retry_question_record(video_name: str, question_file: Path, config: ParseConfig) -> tuple[dict[str, object] | None, dict[str, object] | None]:
-    best_record = None
-    best_details = None
-    for candidate in build_retry_candidates(build_frame_path(video_name, question_file, config), config.ocr_min_confidence):
-        if not candidate["text"]:
-            continue
-        try:
-            record = parse_question_text(str(candidate["text"]), f"{question_file.name}#{candidate['variant']}")
-        except ValueError:
-            continue
-        if best_record is None or score_question_record(record) > score_question_record(best_record):
-            best_record = record
-            best_details = {"variant": candidate["variant"], "filled_options": count_filled_options(record["options"])}
-    return best_record, best_details
-
-
-def retry_answer_record(video_name: str, answer_file: Path, config: ParseConfig) -> tuple[dict[str, str] | None, dict[str, object] | None]:
-    best_record = None
-    best_details = None
-    for candidate in build_retry_candidates(build_frame_path(video_name, answer_file, config), config.ocr_min_confidence):
-        if not candidate["text"]:
-            continue
-        try:
-            record = parse_answer_text(str(candidate["text"]), f"{answer_file.name}#{candidate['variant']}")
-        except ValueError:
-            continue
-        if best_record is None or score_answer_record(record) > score_answer_record(best_record):
-            best_record = record
-            best_details = {"variant": candidate["variant"], "text_length": len(record["solution_text"]) + len(record["explanation"])}
-    return best_record, best_details
-
-
-def parse_pair_with_retry(video_name: str, question_file: Path, answer_file: Path, config: ParseConfig) -> dict[str, object]:
-    retry_details: dict[str, object] = {}
+def parse_document_pair(question_file: Path, answer_file: Path) -> dict[str, object]:
     question_record = parse_question_file(question_file)
     answer_record = parse_answer_file(answer_file)
-    record: dict[str, object] = {**question_record, **answer_record}
-    warnings = validate_record(record)
-
-    if config.retry_ocr and warnings:
-        if any(warning.startswith("missing_options") or warning == "missing_question_text" for warning in warnings):
-            improved_question, details = retry_question_record(video_name, question_file, config)
-            if improved_question and score_question_record(improved_question) > score_question_record(question_record):
-                question_record = improved_question
-                retry_details["question_retry"] = details
-
-        if any(warning in {"missing_solution_letter", "missing_solution_text", "missing_explanation"} for warning in warnings):
-            improved_answer, details = retry_answer_record(video_name, answer_file, config)
-            if improved_answer and score_answer_record(improved_answer) > score_answer_record(answer_record):
-                answer_record = improved_answer
-                retry_details["answer_retry"] = details
-
-        record = {**question_record, **answer_record}
-        warnings = validate_record(record)
-
-    record["validation_warnings"] = warnings
-    record["retry_applied"] = bool(retry_details)
-    record["retry_details"] = retry_details
-    return record
+    return {**question_record, **answer_record}
 
 
 def build_records(video_name: str, config: ParseConfig) -> list[dict[str, object]]:
     text_files = list_text_files(video_name, config)
     records: list[dict[str, object]] = []
     for index in range(0, len(text_files), 2):
-        records.append(parse_pair_with_retry(video_name, text_files[index], text_files[index + 1], config))
+        records.append(parse_document_pair(text_files[index], text_files[index + 1]))
     return records
 
 
