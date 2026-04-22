@@ -44,9 +44,12 @@ def format_timestamp(seconds: float) -> str:
     return f"{hours:02d}-{minutes:02d}-{whole_seconds:02d}"
 
 
-def build_frame_filename(timestamp_seconds: float) -> str:
-    """Build a timestamped output filename."""
-    return f"frame_{format_timestamp(timestamp_seconds)}.jpg"
+def build_frame_filename(index: int) -> str:
+    """Build a 00n_1_question or 00n_2_answer output filename."""
+    n = (index // 2) + 1
+    sub_index = 1 if index % 2 == 0 else 2
+    prefix = "question" if index % 2 == 0 else "answer"
+    return f"{n:03d}_{sub_index}_{prefix}.jpg"
 
 
 def compute_frame_signature(frame) -> cv2.typing.MatLike:
@@ -74,9 +77,9 @@ def should_keep_frame(current_signature, last_saved_signature, config: Extractio
     return True, "kept"
 
 
-def save_frame(frame, output_dir: Path, timestamp_seconds: float, image_quality: int) -> Path:
-    """Persist a frame to disk using a timestamp-based filename."""
-    output_path = output_dir / build_frame_filename(timestamp_seconds)
+def save_frame(frame, output_dir: Path, index: int, image_quality: int) -> Path:
+    """Persist a frame to disk using a sequence-based filename."""
+    output_path = output_dir / build_frame_filename(index)
     success = cv2.imwrite(str(output_path), frame, [cv2.IMWRITE_JPEG_QUALITY, image_quality])
     if not success:
         raise RuntimeError(f"Impossibile salvare il frame: {output_path}")
@@ -116,10 +119,10 @@ def extract_frames(video_path: Path, config: ExtractionConfig) -> int:
 
             processed_targets += 1
             if keep_frame:
-                save_frame(frame, output_dir, next_timestamp, config.image_quality)
+                save_frame(frame, output_dir, saved_count, config.image_quality)
+                logging.info("Estratti %d frame: %s", saved_count + 1, build_frame_filename(saved_count))
                 saved_count += 1
                 last_saved_signature = frame_signature
-                logging.info("Estratti %d frame: %s", saved_count, build_frame_filename(next_timestamp))
             # else:
             #     logging.info("Saltato timestamp %s (%s).", format_timestamp(next_timestamp), reason)
 

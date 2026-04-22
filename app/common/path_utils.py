@@ -25,3 +25,21 @@ def build_video_output_dir(output_root: Path, video_path: Path) -> Path:
 def build_named_output_dir(output_root: Path, name: str) -> Path:
     """Return an output directory using a plain name."""
     return ensure_directory(output_root / sanitize_name(name))
+
+
+def natural_sort_key(path: Path) -> tuple[int, int]:
+    """
+    Sort key for various frame naming patterns.
+    Handles 'question_1', '001_1_question', etc.
+    """
+    stem = path.stem.lower()
+    numbers = [int(n) for n in re.findall(r"(\d+)", stem)]
+
+    if len(numbers) >= 2:
+        # Handles 001_1_question -> (1, 1)
+        return (numbers[0], numbers[1])
+
+    # Fallback for question_1 or answer_1
+    number = numbers[0] if numbers else 0
+    priority = 1 if "answer" in stem else 0
+    return (number, priority)

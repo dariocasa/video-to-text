@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from rapidocr_onnxruntime import RapidOCR
 
-from app.common.path_utils import build_named_output_dir, sanitize_name
+from app.common.path_utils import build_named_output_dir, natural_sort_key, sanitize_name
 from app.config.models import FRAMES_DIR, OcrConfig
 from app.ocr.retry import build_image_variants, load_frame_image
 
@@ -21,9 +22,12 @@ def list_frame_files(frame_dir: Path) -> list[Path]:
         raise NotADirectoryError(f"Il percorso dei frame non e' una cartella: {frame_dir}")
 
     frame_files = sorted(
-        path
-        for path in frame_dir.iterdir()
-        if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
+        (
+            path
+            for path in frame_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
+        ),
+        key=natural_sort_key
     )
     if not frame_files:
         raise FileNotFoundError(f"Nessun frame trovato in: {frame_dir}")

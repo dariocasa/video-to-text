@@ -5,7 +5,7 @@ import logging
 import re
 from pathlib import Path
 
-from app.common.path_utils import build_named_output_dir, sanitize_name
+from app.common.path_utils import build_named_output_dir, natural_sort_key, sanitize_name
 from app.config.models import ParseConfig
 
 
@@ -20,7 +20,7 @@ def list_text_files(video_name: str, config: ParseConfig) -> list[Path]:
     text_dir = config.text_root / video_name
     if not text_dir.exists():
         raise FileNotFoundError(f"Cartella testo non trovata: {text_dir}")
-    text_files = sorted(text_dir.glob("*.txt"))
+    text_files = sorted(text_dir.glob("*.txt"), key=natural_sort_key)
     if not text_files:
         raise FileNotFoundError(f"Nessun file di testo trovato in: {text_dir}")
     if len(text_files) % 2 != 0:
