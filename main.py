@@ -70,42 +70,63 @@ def prompt_video_file() -> Path:
         raise ValueError("Inserimento non valido. Inserisci il numero corrispondente al video.")
 
 
+def prompt_mode() -> str:
+    """Prompt the user to choose between 'All' or 'Single' mode."""
+    print("\nModalita':")
+    print("1. Processa TUTTI i video")
+    print("2. Processa un SINGOLO video")
+    choice = input("Seleziona modalita' (1/2): ").strip()
+    if choice == "1":
+        return "all"
+    elif choice == "2":
+        return "single"
+    else:
+        raise ValueError("Scelta non valida.")
+
+
 def main() -> int:
     """Application entry point."""
     configure_logging()
 
     print("\n--- Video to Text/Frames ---")
-    print("1. Estrai frame da TUTTI i video in 'video/'")
-    print("2. Estrai frame da un SINGOLO video in 'video/'")
-    print("3. Scarica video da YouTube e estrai frame")
-    print("4. Estrai testo da TUTTI i video (OCR)")
-    print("5. Estrai testo da un video SPECIFICO (OCR)")
-    print("6. Costruisci JSON per TUTTI i video")
-    print("7. Costruisci JSON per un video SPECIFICO")
+    print("1. Scarica video da YouTube")
+    print("2. Gestione Frame (Tutti o Singolo)")
+    print("3. Estrazione Testo (OCR) (Tutti o Singolo)")
+    print("4. Costruzione JSON (Tutti o Singolo)")
     print("0. Esci")
     
     scelta = input("\nSeleziona un'opzione: ").strip()
 
     try:
         if scelta == "1":
-            process_all_videos()
-        elif scelta == "2":
-            video_path = prompt_video_file()
-            extract_frames(video_path, ExtractionConfig())
-        elif scelta == "3":
             youtube_url = prompt_youtube_url()
             video_path = download_youtube_video(youtube_url, DownloadConfig())
             extract_frames(video_path, ExtractionConfig())
+            
+        elif scelta == "2":
+            mode = prompt_mode()
+            if mode == "all":
+                process_all_videos()
+            else:
+                video_path = prompt_video_file()
+                extract_frames(video_path, ExtractionConfig())
+                
+        elif scelta == "3":
+            mode = prompt_mode()
+            if mode == "all":
+                process_all_ocr_extractions()
+            else:
+                video_name = prompt_video_name()
+                extract_text_from_video_frames(video_name, OcrConfig())
+                
         elif scelta == "4":
-            process_all_ocr_extractions()
-        elif scelta == "5":
-            video_name = prompt_video_name()
-            extract_text_from_video_frames(video_name, OcrConfig())
-        elif scelta == "6":
-            process_all_documents()
-        elif scelta == "7":
-            video_name = prompt_video_name()
-            build_json_document(video_name, ParseConfig())
+            mode = prompt_mode()
+            if mode == "all":
+                process_all_documents()
+            else:
+                video_name = prompt_video_name()
+                build_json_document(video_name, ParseConfig())
+                
         elif scelta == "0":
             return 0
         else:

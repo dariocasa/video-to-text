@@ -8,7 +8,8 @@ from rapidocr_onnxruntime import RapidOCR
 
 from app.common.path_utils import build_named_output_dir, natural_sort_key, sanitize_name
 from app.config.models import FRAMES_DIR, OcrConfig
-from app.ocr.retry import build_image_variants, load_frame_image
+from app.ocr.processor import QuizFrameProcessor
+from app.ocr.retry import load_frame_image
 
 
 SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -34,35 +35,49 @@ def list_frame_files(frame_dir: Path) -> list[Path]:
     return frame_files
 
 
-def extract_text_lines(ocr_engine: RapidOCR, frame_path: Path, min_confidence: float) -> list[str]:
-    """Extract ordered text lines from a frame image using the default OCR preprocessing."""
+def extract_text_sections(ocr_engine: RapidOCR, frame_path: Path, min_confidence: float) -> list[tuple[list[str], str]]:
+    """
+    Extract text from logical sections of the frame.
+    Returns a list of (lines, suffix) tuples.
+    """
     image = load_frame_image(frame_path)
-    preprocessed_image = build_image_variants(image)["gray2x"]
-    result, _ = ocr_engine(preprocessed_image)
-    if not result:
-        return []
-
-    lines: list[str] = []
-    for item in result:
-        text = str(item[1]).strip()
-        score = float(item[2])
-        if text and score >= min_confidence:
-            lines.append(text)
-    return lines
-
-
-def clean_ocr_lines(lines: list[str]) -> list[str]:
-    """Remove boilerplate '15' from the last line if it exists."""
-    if lines and lines[-1] == "15":
-        logging.info("Rimossa riga '15' finale.")
-        return lines[:-1]
-    return lines
+    sections = QuizFrameProcessor.process(image, frame_path.name)
+    
+    results: list[tuple[list[str], str]] = []
+    
+    for processed_img, label in sections:
+        ocr_result, _ = ocr_engine(processed_img)
+        
+        lines: list[str] = []
+        if ocr_result:
+            for item in ocr_result:
+                text = str(item[1]).strip()
+                score = float(item[2])
+                if text and score >= min_confidence:
+                    lines.append(text)
+        results.append((lines, label))
+        
+    return results
 
 
-def save_text_file(output_dir: Path, frame_path: Path, lines: list[str]) -> Path:
-    """Save extracted text for a frame in a matching .txt file."""
-    output_path = output_dir / f"{frame_path.stem}.txt"
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+def save_section_text(output_dir: Path, frame_path: Path, lines: list[str], sub_index: int, label: str) -> Path:
+    """
+    Save extracted text for a specific section.
+    Naming follows: 00n_typeindex_subindex_label.txt
+    """
+    # frame_path.stem is e.g. 001_1_question
+    # output should be 001_1_1_question.txt
+    parts = frame_path.stem.split("_")
+    n = parts[0]
+    type_index = parts[1]
+    
+    filename = f"{n}_{type_index}_{sub_index}_{label}.txt"
+    output_path = output_dir / filename
+    
+    # Questions, answers and explanations should be single-line
+    # ONLY Options should preserve line breaks for clarity
+    joiner = "\n" if label == "option" else " "
+    output_path.write_text(joiner.join(lines), encoding="utf-8")
     return output_path
 
 
@@ -78,10 +93,12 @@ def extract_text_from_video_frames(video_name: str, config: OcrConfig) -> int:
     logging.info(f"Text output: {output_dir}")
 
     for index, frame_path in enumerate(frame_files, start=1):
-        lines = extract_text_lines(ocr_engine, frame_path, config.min_confidence)
-        cleaned_lines = clean_ocr_lines(lines)
-        save_text_file(output_dir, frame_path, cleaned_lines)
-        saved_count += 1
+        section_results = extract_text_sections(ocr_engine, frame_path, config.min_confidence)
+        
+        for sub_index, (lines, label) in enumerate(section_results, start=1):
+            save_section_text(output_dir, frame_path, lines, sub_index, label)
+            saved_count += 1
+            
         logging.info("Testo estratto %d/%d: %s", index, len(frame_files), frame_path.name)
 
     logging.info("Completato. File di testo salvati: %d.", saved_count)
