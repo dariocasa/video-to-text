@@ -51,8 +51,9 @@ def clean_timer_region(image: np.ndarray, bg_color: int = 255) -> np.ndarray:
     """
     h, w = image.shape[:2]
     # Target the bottom right area roughly occupied by the timer icon
-    start_y = int(h * 0.75)
-    start_x = int(w * 0.88)
+    # Shifting slightly more to the left and up to be sure we cover the entire icon
+    start_y = int(h * 0.70)
+    start_x = int(w * 0.85)
     
     result = image.copy()
     if len(result.shape) == 3:

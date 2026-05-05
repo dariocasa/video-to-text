@@ -23,93 +23,148 @@ def list_text_files(video_name: str, config: ParseConfig) -> list[Path]:
     text_files = sorted(text_dir.glob("*.txt"), key=natural_sort_key)
     if not text_files:
         raise FileNotFoundError(f"Nessun file di testo trovato in: {text_dir}")
-    if len(text_files) % 2 != 0:
-        raise ValueError("Il numero di file OCR non e' pari: impossibile creare coppie.")
     return text_files
 
 
-def normalize_whitespace(value: str) -> str:
-    value = value.replace("\r", "\n")
-    value = re.sub(r"[ \t]+", " ", value)
-    value = re.sub(r"\n{3,}", "\n\n", value)
-    return value.strip()
+def group_files_by_question(text_files: list[Path]) -> dict[str, dict[str, Path]]:
+    groups = {}
+    for f in text_files:
+        parts = f.stem.split("_")
+        if len(parts) < 4:
+            continue
+        # "001_1_1_question" → q_id="001" (numeric prefix, new format)
+        # "frame_00-00-00_1_question" → q_id="frame_00-00-00" (timestamp prefix, old format)
+        q_id = parts[0] if parts[0].isdigit() else f"{parts[0]}_{parts[1]}"
+        label = parts[-1]
+        if q_id not in groups:
+            groups[q_id] = {}
+        groups[q_id][label] = f
+    return groups
 
 
-def count_filled_options(options: dict[str, str]) -> int:
-    return sum(1 for option_text in options.values() if option_text.strip())
+def parse_question_label(file_path: Path) -> tuple[int, str]:
+    text = file_path.read_text(encoding="utf-8").strip()
+    match = QUESTION_NUMBER_PATTERN.search(text)
+    if not match:
+        # Fallback to file name if no number found
+        try:
+            q_num = int(file_path.stem.split("_")[0])
+        except:
+            q_num = 0
+        return q_num, text
+    
+    q_num = int(match.group(1))
+    q_text = text[match.end():].strip()
+    return q_num, q_text
 
 
-def parse_question_text(raw_text: str, source_name: str) -> dict[str, object]:
-    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
-    joined_text = normalize_whitespace("\n".join(lines))
-    joined_text = TRAILING_SCORE_PATTERN.sub("", joined_text).strip()
-    question_number_match = QUESTION_NUMBER_PATTERN.search(joined_text)
-    if not question_number_match:
-        raise ValueError(f"Numero domanda non trovato in {source_name}")
-    question_number = int(question_number_match.group(1))
-
-    option_matches = list(OPTION_PATTERN.finditer(joined_text))
-    if len(option_matches) < 2:
-        raise ValueError(f"Opzioni insufficienti in {source_name}")
-
-    question_text = joined_text[question_number_match.end() : option_matches[0].start()].strip()
-    options: dict[str, str] = {letter: "" for letter in ("A", "B", "C", "D")}
-    for index, match in enumerate(option_matches):
-        option_letter = match.group(1)
-        option_start = match.end(1) + 1
-        option_end = option_matches[index + 1].start() if index + 1 < len(option_matches) else len(joined_text)
-        options[option_letter] = joined_text[option_start:option_end].strip()
-
-    return {
-        "question_number": question_number,
-        "question": question_text,
-        "options": options,
-        "source_question_file": source_name,
-    }
+def parse_option_label(file_path: Path) -> dict[str, str]:
+    lines = file_path.read_text(encoding="utf-8").splitlines()
+    options = {"A": "", "B": "", "C": "", "D": ""}
+    for line in lines:
+        line = line.strip()
+        match = OPTION_PATTERN.match(line)
+        if match:
+            letter = match.group(1).upper()
+            text = line[match.end():].strip()
+            options[letter] = text
+    return options
 
 
-def parse_question_file(question_file: Path) -> dict[str, object]:
-    return parse_question_text(question_file.read_text(encoding="utf-8"), question_file.name)
+def parse_answer_label(file_path: Path) -> tuple[str, str]:
+    text = file_path.read_text(encoding="utf-8").strip()
+    # Expecting "Answer: [A]. [Text]"
+    match = ANSWER_PATTERN.search(text)
+    if match:
+        return match.group(1).upper(), match.group(2).strip()
+    return "", text
 
 
-def parse_answer_text(raw_text: str, source_name: str) -> dict[str, str]:
-    raw_text = normalize_whitespace(raw_text)
-    answer_match = ANSWER_PATTERN.search(raw_text)
-    explanation_match = EXPLANATION_PATTERN.search(raw_text)
-    if not answer_match:
-        raise ValueError(f"Soluzione non trovata in {source_name}")
-    if not explanation_match:
-        raise ValueError(f"Spiegazione non trovata in {source_name}")
-
-    solution_letter = answer_match.group(1).upper()
-    solution_text = answer_match.group(2)
-    solution_text = solution_text[: explanation_match.start() - answer_match.start(2)]
-
-    return {
-        "solution": solution_letter,
-        "solution_text": normalize_whitespace(solution_text),
-        "explanation": normalize_whitespace(explanation_match.group(1)),
-        "source_answer_file": source_name,
-    }
+def parse_explanation_label(file_path: Path) -> str:
+    text = file_path.read_text(encoding="utf-8").strip()
+    # Strip "Explanation: " prefix if present
+    match = EXPLANATION_PATTERN.search(text)
+    if match:
+        return match.group(1).strip()
+    return text
 
 
-def parse_answer_file(answer_file: Path) -> dict[str, str]:
-    return parse_answer_text(answer_file.read_text(encoding="utf-8"), answer_file.name)
+def _frame_filename(text_path: Path) -> str:
+    """Reconstruct the original frame filename from a text file path.
 
-
-
-
-def parse_document_pair(question_file: Path, answer_file: Path) -> dict[str, object]:
-    question_record = parse_question_file(question_file)
-    answer_record = parse_answer_file(answer_file)
-    return {**question_record, **answer_record}
+    New format: "001_1_1_question.txt" → "001_1_question.jpg"
+    Old format: "frame_00-00-00_1_question.txt" → "frame_00-00-00.jpg"
+    """
+    parts = text_path.stem.split("_")
+    if parts[0].isdigit():
+        return f"{parts[0]}_{parts[1]}_{parts[-1]}.jpg"
+    return f"{parts[0]}_{parts[1]}.jpg"
 
 
 def build_records(video_name: str, config: ParseConfig) -> list[dict[str, object]]:
     text_files = list_text_files(video_name, config)
+    groups = group_files_by_question(text_files)
     records: list[dict[str, object]] = []
-    for index in range(0, len(text_files), 2):
-        records.append(parse_document_pair(text_files[index], text_files[index + 1]))
+
+    q_ids = sorted(groups.keys())
+    # Holds a question slide waiting to be paired with its answer slide (old timestamp format)
+    pending: dict | None = None
+
+    for q_id in q_ids:
+        files = groups[q_id]
+        if "question" not in files:
+            continue
+
+        q_num, q_text = parse_question_label(files["question"])
+
+        if "answer" in files:
+            # New numeric format: answer label is a dedicated file
+            if pending:
+                records.append(pending)
+                pending = None
+            options = parse_option_label(files["option"]) if "option" in files else {}
+            sol_letter, sol_text = parse_answer_label(files["answer"])
+            explanation = parse_explanation_label(files["explanation"]) if "explanation" in files else ""
+            records.append({
+                "question_number": q_num,
+                "question": q_text,
+                "options": options,
+                "source_question_file": _frame_filename(files["question"]),
+                "solution": sol_letter,
+                "solution_text": sol_text,
+                "explanation": explanation,
+                "source_answer_file": _frame_filename(files["answer"])
+            })
+        elif q_num > 0:
+            # Old timestamp format: this is a question slide
+            if pending:
+                records.append(pending)
+            options = parse_option_label(files["option"]) if "option" in files else {}
+            pending = {
+                "question_number": q_num,
+                "question": q_text,
+                "options": options,
+                "source_question_file": _frame_filename(files["question"]),
+                "solution": "",
+                "solution_text": "",
+                "explanation": "",
+                "source_answer_file": ""
+            }
+        else:
+            # Old timestamp format: answer slide (q_num==0, "question" file contains "Answer: X.")
+            sol_letter, sol_text = parse_answer_label(files["question"])
+            explanation = parse_explanation_label(files["option"]) if "option" in files else ""
+            if sol_letter and pending:
+                pending["solution"] = sol_letter
+                pending["solution_text"] = sol_text
+                pending["explanation"] = explanation
+                pending["source_answer_file"] = _frame_filename(files["question"])
+                records.append(pending)
+                pending = None
+
+    if pending:
+        records.append(pending)
+
     return records
 
 

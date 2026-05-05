@@ -60,6 +60,28 @@ def extract_text_sections(ocr_engine: RapidOCR, frame_path: Path, min_confidence
     return results
 
 
+def merge_option_lines(lines: list[str]) -> list[str]:
+    """Merge lines that belong to the same option (A, B, C, D)."""
+    import re
+    merged = []
+    # Pattern to detect start of a new option: "A.", "B.", "(A)", "A)" etc.
+    option_pattern = re.compile(r'^([A-Z][\.\)])|(\([A-Z]\))')
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        if option_pattern.match(line):
+            merged.append(line)
+        else:
+            if merged:
+                merged[-1] += " " + line
+            else:
+                merged.append(line)
+    return merged
+
+
 def save_section_text(output_dir: Path, frame_path: Path, lines: list[str], sub_index: int, label: str) -> Path:
     """
     Save extracted text for a specific section.
@@ -74,10 +96,13 @@ def save_section_text(output_dir: Path, frame_path: Path, lines: list[str], sub_
     filename = f"{n}_{type_index}_{sub_index}_{label}.txt"
     output_path = output_dir / filename
     
-    # Questions, answers and explanations should be single-line
-    # ONLY Options should preserve line breaks for clarity
-    joiner = "\n" if label == "option" else " "
-    output_path.write_text(joiner.join(lines), encoding="utf-8")
+    if label == "option":
+        # Merge multi-line options but keep A, B, C, D on separate lines
+        formatted_lines = merge_option_lines(lines)
+        output_path.write_text("\n".join(formatted_lines), encoding="utf-8")
+    else:
+        # Questions, answers and explanations should be single-line
+        output_path.write_text(" ".join(lines), encoding="utf-8")
     return output_path
 
 
